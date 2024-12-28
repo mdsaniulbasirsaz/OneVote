@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'adminLoginPage.dart';
 import 'adminfeedback.dart';
 import 'notice.dart';
@@ -13,6 +14,33 @@ class AdminProfile extends StatelessWidget {
   final double totalIncome;
 
   const AdminProfile({super.key, this.totalIncome = 0.0});
+
+
+  // Fetch Polls from Firestore
+  Future<List<Map<String, dynamic>>> fetchPolls() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance.collection('polls').get();
+
+      List<Map<String, dynamic>> polls = snapshot.docs.map((doc) {
+        return {
+          "paymentAmount": doc['paymentAmount'],
+          "createdBy": doc['createdBy'],
+          "createdAt": doc['createdAt'],
+          "isPayment": doc['isPayment'] ?? 0,
+        };
+      }).toList();
+
+      polls.sort((a, b) => b['createdAt'].compareTo(a['createdAt']));
+      return polls;
+    } catch (e) {
+      print('Error fetching polls: $e');
+      return [];
+    }
+  }
+
+
+
+
 
   Future<Map<String, dynamic>?> _fetchUserData() async {
     try {
@@ -61,6 +89,8 @@ class AdminProfile extends StatelessWidget {
       return ''; // Return empty if there's an error
     }
   }
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -301,80 +331,127 @@ class AdminProfile extends StatelessWidget {
                       const Divider(height: 20, thickness: 1),
                       const Center(
                         child: Text(
-                          "Poll List",
+                          "Service List",
                           textAlign: TextAlign.center,
                           style: TextStyle(
                               fontSize: 18, fontWeight: FontWeight.bold),
                         ),
                       ),
                       const SizedBox(height: 10.0),
-                      Card(
-                        child: Table(
-                          border: TableBorder.all(),
-                          children: const [
-                            TableRow(
-                              decoration:
-                                  BoxDecoration(color: Color(0xFF1877F2)),
-                              children: [
-                                Padding(
-                                  padding: EdgeInsets.all(8.0),
+                      FutureBuilder<List<Map<String, dynamic>>>(
+                        future: fetchPolls(),
+                        builder: (context, pollSnapshot) {
+                          if (pollSnapshot.connectionState == ConnectionState.waiting) {
+                            return const Center(child: CircularProgressIndicator());
+                          }
+
+                          if (pollSnapshot.hasError) {
+                            return Center(child: Text('Error: ${pollSnapshot.error}'));
+                          }
+
+                          final polls = pollSnapshot.data ?? [];
+
+                          if (polls.isEmpty) {
+                            return Center(child: Text('No data available'));
+                          }
+
+                      // Calculate total payment amount
+                          double totalPaymentAmount = 0.0;
+                          for (var poll in polls) {
+                            String paymentAmountString = poll['paymentAmount'] ?? '0.0';  // Default to '0.0' if null
+                            double paymentAmount = double.tryParse(paymentAmountString) ?? 0.0;  // Safely parse to double
+                            totalPaymentAmount += paymentAmount;
+                          }
+
+                          return Column(
+                            children: [
+                              // Display Total Payment Amount
+                              Padding(
+                                  padding: const EdgeInsets.all(8.0),
                                   child: Text(
-                                    'Name',
+                                    'Total Earning: ${totalPaymentAmount.toStringAsFixed(2)}',
                                     style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white),
-                                    textAlign: TextAlign.center,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.blue, // Set the text color to blue (you can change it to any color you like)
+                                    ),
                                   ),
                                 ),
-                                Padding(
-                                  padding: EdgeInsets.all(8.0),
-                                  child: Text(
-                                    'Date',
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white),
-                                    textAlign: TextAlign.center,
-                                  ),
+                              Card(
+                                child: Table(
+                                  border: TableBorder.all(),
+                                  children: [
+                                    const TableRow(
+                                      decoration: BoxDecoration(color: Color(0xFF1877F2)),
+                                      children: [
+                                        Padding(
+                                          padding: EdgeInsets.all(8.0),
+                                          child: Center(child: Text('Name', style: TextStyle(color: Colors.white))),
+                                        ),
+                                        Padding(
+                                          padding: EdgeInsets.all(8.0),
+                                          child: Center(child: Text('Created Date', style: TextStyle(color: Colors.white))),
+                                        ),
+                                        Padding(
+                                          padding: EdgeInsets.all(8.0),
+                                          child: Center(child: Text('Earning', style: TextStyle(color: Colors.white))),
+                                        ),
+                                      ],
+                                    ),
+                                    ...polls.map((poll) {
+                                      // Ensure createdAt is a DateTime object
+                                      DateTime createdAt = poll['createdAt'] is Timestamp
+                                          ? (poll['createdAt'] as Timestamp).toDate()
+                                          : DateTime.parse(poll['createdAt'].toString());
+
+                                      return TableRow(
+                                        decoration: BoxDecoration(
+                                          color: Colors.grey[200], // Add background color for each row
+                                        ),
+                                        children: [
+                                          Padding(
+                                            padding: const EdgeInsets.all(8.0),
+                                            child: Text(
+                                              poll['createdBy'] ?? 'Unknown',
+                                              style: TextStyle(fontSize: 12),
+                                            ),
+                                          ),
+                                          Padding(
+                                            padding: const EdgeInsets.all(8.0),
+                                            child: Text(
+                                              DateFormat.yMd().add_jm().format(createdAt),
+                                              style: TextStyle(fontSize: 12),
+                                            ),
+                                          ),
+                                          Padding(
+                                            padding: const EdgeInsets.all(8.0),
+                                            child: Center(
+                                              child: Text(
+                                                poll['isPayment'] == 1
+                                                    ? (poll['paymentAmount'] != null
+                                                        ? poll['paymentAmount'].toString()
+                                                        : 'N/A')
+                                                    : 'Not completed',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: poll['isPayment'] == 1
+                                                      ? const Color.fromARGB(255, 20, 166, 1)
+                                                      : (poll['isPayment'] == 0
+                                                          ? Colors.red
+                                                          : const Color.fromARGB(255, 157, 3, 246)),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      );
+                                    }).toList(),
+                                  ],
                                 ),
-                                Padding(
-                                  padding: EdgeInsets.all(8.0),
-                                  child: Text(
-                                    'Earning',
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            TableRow(
-                              children: [
-                                Padding(
-                                  padding: EdgeInsets.all(8.0),
-                                  child: Text(
-                                    'Md Saniul Basir Saz',
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ),
-                                Padding(
-                                  padding: EdgeInsets.all(8.0),
-                                  child: Text(
-                                    'Jan 1, 2023',
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ),
-                                Padding(
-                                  padding: EdgeInsets.all(8.0),
-                                  child: Text(
-                                    '৳ 500',
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
+                              ),
+                            ],
+                          );
+                        },
                       ),
                     ],
                   ),

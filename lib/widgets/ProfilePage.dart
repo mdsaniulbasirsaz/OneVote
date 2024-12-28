@@ -5,9 +5,41 @@ import 'main.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'EditProfile.dart';
 import 'dart:convert';
+import 'package:intl/intl.dart';
+
+
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
+
+  // Fetch Polls from Firestore
+  Future<List<Map<String, dynamic>>> fetchPolls(String name) async {
+    try {
+      final snapshot = await FirebaseFirestore.instance.collection('polls').where('createdBy', isEqualTo: name).get();
+
+      List<Map<String, dynamic>> polls = snapshot.docs.map((doc) {
+        return {
+          "paymentAmount": doc['paymentAmount'],
+          "pollId": doc['pollId'],
+          "pollTitle": doc['pollTitle'],
+          "createdAt": doc['createdAt'],
+          "isPayment": doc['isPayment'] ?? 0,
+        };
+      }).toList();
+
+      List<Map<String, dynamic>> paidPolls = polls.where((poll) => poll['isPayment'] == 1).toList();
+      
+      // If there are paid polls, sort them by createdAt in descending order
+      if (paidPolls.isNotEmpty) {
+        paidPolls.sort((a, b) => b['createdAt'].compareTo(a['createdAt']));
+      }  // Filter and sort only the polls where isPayment == 1
+      return paidPolls;
+    
+    } catch (e) {
+      print('Error fetching polls: $e');
+      return [];
+    }
+  }
 
   Future<Map<String, dynamic>?> _fetchUserData() async {
     try {
@@ -236,81 +268,113 @@ class ProfilePage extends StatelessWidget {
                   ),
 
                   const SizedBox(height: 10.0),
-                  Card(
-                    child: Table(
-                      border: TableBorder.all(),
-                      children: const [
-                        TableRow(
-                          decoration:
-                              BoxDecoration(color: Colors.lightBlueAccent),
+                  // Fetch Polls and show in Table
+                  FutureBuilder<List<Map<String, dynamic>>>(
+                    future: fetchPolls(userName),
+                    builder: (context, pollSnapshot) {
+                      if (pollSnapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      if (pollSnapshot.hasError) {
+                        return const Center(
+                          child: Text("Error loading polls data."),
+                        );
+                      }
+                      if (!pollSnapshot.hasData || pollSnapshot.data!.isEmpty) {
+                        return const Center(
+                          child: Text("No paid polls available."),
+                        );
+                      }
+
+                      // Extracting poll data for table display
+                      List<Map<String, dynamic>> polls = pollSnapshot.data!;
+
+                      return Card(
+                        child: Table(
+                          border: TableBorder.all(),
                           children: [
-                            Padding(
-                              padding: EdgeInsets.all(8.0),
-                              child: Text(
-                                'Title',
-                                style: TextStyle(fontWeight: FontWeight.bold),
-                                textAlign: TextAlign.center,
-                              ),
+                            TableRow(
+                              decoration: BoxDecoration(color: Colors.lightBlueAccent),
+                              children: const [
+                                Padding(
+                                  padding: EdgeInsets.all(8.0),
+                                  child: Text(
+                                    'Poll ID',
+                                    style: TextStyle(fontWeight: FontWeight.bold),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                                Padding(
+                                  padding: EdgeInsets.all(8.0),
+                                  child: Text(
+                                    'Title',
+                                    style: TextStyle(fontWeight: FontWeight.bold),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                                Padding(
+                                  padding: EdgeInsets.all(8.0),
+                                  child: Text(
+                                    'Date',
+                                    style: TextStyle(fontWeight: FontWeight.bold),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                                Padding(
+                                  padding: EdgeInsets.all(8.0),
+                                  child: Text(
+                                    'Amount',
+                                    style: TextStyle(fontWeight: FontWeight.bold),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              ],
                             ),
-                            Padding(
-                              padding: EdgeInsets.all(8.0),
-                              child: Text(
-                                'Date',
-                                style: TextStyle(fontWeight: FontWeight.bold),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                            Padding(
-                              padding: EdgeInsets.all(8.0),
-                              child: Text(
-                                'Amount',
-                                style: TextStyle(fontWeight: FontWeight.bold),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
+                            // Populate table rows dynamically
+                            ...polls.map((poll) {
+                              // Ensure createdAt is a DateTime object
+                              DateTime createdAt = poll['createdAt'] is Timestamp
+                                  ? (poll['createdAt'] as Timestamp).toDate()
+                                  : DateTime.parse(poll['createdAt'].toString());
+
+                              String formattedDate = DateFormat('yMd').add_jm().format(createdAt);
+
+                              
+                              return TableRow(
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: Text(poll['pollId'],
+                                    style: TextStyle(fontSize: 9),),
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: Text(poll['pollTitle'],
+                                    style: TextStyle(fontSize: 9),),
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: Text(
+                                      formattedDate,
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(fontSize: 9),
+                                    ),
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: Text(
+                                      '${poll['paymentAmount']} BDT',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(fontSize: 9),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            }).toList(),
                           ],
                         ),
-                        TableRow(
-                          children: [
-                            Padding(
-                              padding: EdgeInsets.all(8.0),
-                              child: Text('Election 2023'),
-                            ),
-                            Padding(
-                              padding: EdgeInsets.all(8.0),
-                              child: Text('Jan 1, 2023'),
-                            ),
-                            Padding(
-                              padding: EdgeInsets.all(8.0),
-                              child: Text(
-                                '200 BDT',
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                          ],
-                        ),
-                        TableRow(
-                          children: [
-                            Padding(
-                              padding: EdgeInsets.all(8.0),
-                              child: Text('Election 2024'),
-                            ),
-                            Padding(
-                              padding: EdgeInsets.all(8.0),
-                              child: Text('Feb 15, 2024'),
-                            ),
-                            Padding(
-                              padding: EdgeInsets.all(8.0),
-                              child: Text(
-                                '100 BDT',
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                          ],
-                        ),
-                        // Add more rows as needed
-                      ],
-                    ),
+                      );
+                    },
                   ),
                 ],
               ),

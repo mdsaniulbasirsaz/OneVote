@@ -128,4 +128,20 @@ class PollController {
       return [];
     }
   }
+
+  //Fetch all polls where isPayment ==1
+  Future<List<Poll>> fetchPolls() async {
+    try{
+        QuerySnapshot snapshot = await _db
+          .collection('polls')
+          .where('isPayment', isEqualTo: 1)
+          .get();
+        return snapshot.docs
+        .map((doc) => Poll.fromMap(doc.data() as Map<String, dynamic>))
+        .toList();
+    } catch(e){
+      print('Error fetching polls: $e');
+      return [];
+    }
+  }
 }
