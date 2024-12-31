@@ -48,7 +48,7 @@ Future<List<Map<String, dynamic>>> fetchPollData() async {
   final snapshot = await FirebaseFirestore.instance.collection('polls').get();
 
   // Fetch and map the documents
-  List<Map<String, dynamic>> pollData = snapshot.docs.map((doc) {
+  List<Map<String, dynamic>> polls = snapshot.docs.map((doc) {
     return {
       "pollId": doc.id,
       "pollTitle": doc['pollTitle'] ?? "N/A",
@@ -58,16 +58,18 @@ Future<List<Map<String, dynamic>>> fetchPollData() async {
       "createdAt": doc['createdAt'] is Timestamp
       ? (doc['createdAt'] as Timestamp).toDate()
       : DateTime.parse(doc['createdAt']),
+      "isPayment": doc['isPayment'] ?? 0,
       };
   }).toList();
 
-  // Sort the list by startTime in descending order (newest first)
-  pollData.sort((a, b) {
-    // Compare startTime of a and b (newer poll first)
-    return b['startTime'].compareTo(a['startTime']);
-  });
-
-  return pollData;
+  List<Map<String, dynamic>> paidPolls = polls.where((poll) => poll['isPayment'] == 1).toList();
+      
+  // If there are paid polls, sort them by createdAt in descending order
+  if (paidPolls.isNotEmpty) {
+    paidPolls.sort((a, b) => b['createdAt'].compareTo(a['createdAt']));
+  }  // Filter and sort only the polls where isPayment == 1
+  
+  return paidPolls;
 }
 
 // Function to determine poll status
